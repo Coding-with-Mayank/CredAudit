@@ -1,0 +1,29 @@
+# A second engagement/environment, alongside example-engagement.yaml.
+# Demonstrates that scheduled-offline-audit.yml discovers every scope
+# file in this directory automatically -- drop in a third one and it
+# picks that up too, no workflow edits needed.
+
+engagement_id: "ACME-2026-Q3-STAGING"
+client_name: "Acme Corp (staging environment)"
+authorized_by: "Jane Doe, CISO — signed SOW #4521, 2026-07-20"
+
+start_date: 2026-08-01
+end_date: 2026-08-14
+
+targets:
+  - "203.0.113.11"
+
+allowed_modules:
+  - recon
+  - online
+  - offline
+
+max_requests_per_minute: 20
+
+protocol_limits:
+  ssh:
+    seconds_between_passwords: 120  # staging tolerates faster pacing than prod
+    tasks: 2
+
+emergency_contact: "security-oncall@acme.com"
+confirm_online_testing: false

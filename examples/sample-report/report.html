@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credential audit report &mdash; ACME-2026-Q3-001</title>
+<style>
+  :root {
+    --ink: #14171F;
+    --paper: #F6F7F5;
+    --rule: #D8DBD6;
+    --soft: #5B6169;
+    --clear: #2F6E51;
+    --flag: #A83B2E;
+    --medium: #A6790A;
+    --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, serif;
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'IBM Plex Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  .cover {
+    background: var(--ink);
+    color: var(--paper);
+    margin: 0 -24px 48px;
+    padding: 48px 24px 40px;
+  }
+
+  .cover-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .cover-title {
+    font-family: var(--font-serif);
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin: 0 0 4px;
+  }
+
+  .cover-id {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: #A9B0BC;
+    letter-spacing: 0.04em;
+  }
+
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 6px 10px;
+    border-radius: 3px;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+  }
+  .pill.clear { color: #7FD9AE; }
+  .pill.flag { color: #F0A090; }
+
+  .cover-meta {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 32px;
+    font-size: 14px;
+  }
+
+  .cover-meta dt {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #8A909C;
+    margin-bottom: 2px;
+  }
+
+  .cover-meta dd { margin: 0; }
+
+  .cover-checksum {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #2C3140;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #8A909C;
+    word-break: break-all;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--soft);
+    margin: 0 0 6px;
+  }
+
+  .section {
+    padding: 28px 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .section h2 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 21px;
+    margin: 0 0 12px;
+  }
+
+  .stat { font-size: 15px; margin: 0 0 6px; }
+  .stat-num { font-family: var(--font-mono); font-size: 22px; font-weight: 600; }
+  .stat-num.clear { color: var(--clear); }
+  .stat-num.flag { color: var(--flag); }
+
+  .note { font-size: 13px; color: var(--soft); margin: 6px 0 0; }
+
+  .tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: #EAECE8;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 4px 8px;
+  }
+
+  .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data-table th {
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--soft);
+    border-bottom: 1px solid var(--rule);
+    padding: 6px 8px;
+  }
+  .data-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .data-table td.mono { font-family: var(--font-mono); font-size: 13px; }
+  .data-table td.clear { color: var(--clear); font-weight: 600; }
+  .data-table td.flag { color: var(--flag); font-weight: 600; }
+  .data-table td.note-cell { font-size: 12px; color: var(--soft); }
+
+  .risk-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .risk-flag { color: var(--flag); }
+  .risk-medium { color: var(--medium); }
+  .risk-clear { color: var(--clear); }
+
+  .js-intel-block { margin-bottom: 18px; }
+  .js-intel-block:last-child { margin-bottom: 0; }
+
+  code {
+    font-family: var(--font-mono);
+    background: #EAECE8;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+
+  .chart { margin-top: 14px; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--soft);
+  }
+  .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+  .legend-swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    display: inline-block;
+    flex: none;
+  }
+
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0;
+    margin-top: 16px;
+  }
+
+  .chain-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: #FFFFFF;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 10px 12px;
+    min-width: 168px;
+  }
+
+  .chain-block:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  .chain-link {
+    width: 20px;
+    align-self: center;
+    border-top: 1px dashed var(--rule);
+  }
+
+  .chain-index {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--soft);
+  }
+
+  .chain-action { font-size: 13px; font-weight: 600; }
+  .chain-time { font-family: var(--font-mono); font-size: 11px; color: var(--soft); }
+  .chain-hash { font-family: var(--font-mono); font-size: 11px; color: var(--soft); }
+
+  .chain-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    margin-top: 16px;
+    padding: 6px 10px;
+    border-radius: 3px;
+    border: 1px solid currentColor;
+  }
+  .chain-status.clear { color: var(--clear); }
+  .chain-status.flag { color: var(--flag); }
+
+  .footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--rule);
+    font-size: 12px;
+    color: var(--soft);
+  }
+  .footer code { font-size: 0.95em; }
+
+  @media (max-width: 560px) {
+    .cover-meta { grid-template-columns: 1fr; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .chain-block:focus-visible { outline: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="cover">
+    <div class="cover-top">
+      <div>
+        <p class="cover-title">Credential audit report</p>
+        <p class="cover-id">ACME-2026-Q3-001</p>
+      </div>
+      <span class="pill clear">CHAIN VERIFIED</span>
+    </div>
+
+    <dl class="cover-meta">
+      <div><dt>Client</dt><dd>Acme Corp</dd></div>
+      <div><dt>Authorized by</dt><dd>Jane Doe, CISO — signed SOW #4521, 2026-07-20</dd></div>
+      <div><dt>Engagement window</dt><dd>2026-08-01 &ndash; 2026-08-14</dd></div>
+      <div><dt>Generated</dt><dd>2026-08-01 12:08 UTC</dd></div>
+    </dl>
+
+    <p class="cover-checksum">scope file sha256 &nbsp;8f1a2c9e4b7d0f3a6c5e8b1d4f7a0c3e6b9d2f5a8c1e4b7d0f3a6c9e2b5d8f1a</p>
+  </header>
+
+  
+        <section class="section" style="border-top:none; padding-top:0;">
+          <p class="eyebrow">AI-generated draft &mdash; review before sharing</p>
+          <h2>Executive summary</h2>
+          <p class="stat" style="font-size:15px; font-weight:400;">This engagement identified 7 recon findings across 4 in-scope targets, including one critical exposure and a high-risk outdated SSH configuration with password authentication enabled. An AWS access key was found embedded in client-side JavaScript on acme.example and has not been verified as active -- this requires immediate manual follow-up. Offline hash auditing found 11 of 142 tested credentials (8%) to be weak, and 11 of 142 tested passwords have appeared in known public breaches. Online credential testing against the SSH service found 2 valid credential pairs out of 48 accounts tested.</p>
+        </section>
+
+  <section class="section" style="border-top:none; padding-top:0;">
+    <p class="eyebrow">Authorization</p>
+    <h2>Targets in scope</h2>
+    <div class="tag-list"><span class="tag">203.0.113.10</span><span class="tag">203.0.113.0/28</span><span class="tag">vpn.acme-test-range.example</span><span class="tag">acme.example</span></div>
+  </section>
+
+  
+        <section class="section">
+          <p class="eyebrow">Interpretation</p>
+          <h2>Risk assessment</h2>
+          <table class="data-table">
+      <thead><tr><th>Service</th><th>Target</th><th>Risk</th><th>Indicators</th><th>Reasoning</th></tr></thead>
+      <tbody><tr><td class="mono">http</td><td class="mono">acme.example</td><td><span class="risk-badge risk-flag">Critical</span></td><td>secrets_exposed</td><td class="note-cell">Secrets or sensitive files exposed; Web misconfigurations often expose source code, secrets, or internal details.</td></tr><tr><td class="mono">ssh</td><td class="mono">203.0.113.10</td><td><span class="risk-badge risk-flag">High</span></td><td>old_version, password_auth_enabled</td><td class="note-cell">Outdated software version detected; Password authentication enabled; SSH is a common brute-force and credential-stuffing target.</td></tr></tbody>
+    </table>
+        </section>
+        <section class="section">
+          <p class="eyebrow">Evidence</p>
+          <h2>Recon findings</h2>
+          <p class="stat"><span class="stat-num">7</span>
+            findings recorded across scoped targets.</p>
+          <div class="chart"><svg viewBox="0 0 460 22" width="100%" height="22" role="img" aria-label="proportion chart"><rect x="0" y="0" width="460" height="22" rx="4" fill="var(--rule)" opacity="0.35"/><rect x="0.0" y="0" width="262.9" height="22" fill="var(--flag)" /><rect x="262.9" y="0" width="197.1" height="22" fill="var(--clear)" /></svg><div class="legend"><span class="legend-item"><span class="legend-swatch" style="background:var(--flag)"></span>Needs attention: 4 (57%)</span><span class="legend-item"><span class="legend-swatch" style="background:var(--clear)"></span>Informational: 3 (43%)</span></div></div>
+        </section>
+        <section class="section">
+          <p class="eyebrow">Evidence</p>
+          <h2>JavaScript intelligence</h2>
+          
+        <div class="js-intel-block">
+          <p class="note"><strong>https://acme.example/static/main.js</strong>
+            </p>
+          <div class="tag-list" style="margin:8px 0;"><span class="tag">/api/v2/admin/debug/config <span class="note">(10)</span></span><span class="tag">/api/v1/users <span class="note">(3)</span></span></div>
+          <table class="data-table"><thead><tr><th>Kind</th><th>Value (masked)</th></tr></thead><tbody><tr><td class="mono">aws_access_key</td><td class="mono flag">AKIA************MNOP</td></tr></tbody></table>
+        </div>
+        </section>
+        <section class="section">
+          <p class="eyebrow">Interpretation</p>
+          <h2>Attack graph</h2>
+          <p class="note" style="margin-bottom:8px;">Hypothetical escalation paths built from the
+            evidence above. Nothing past a credential leak is tested or confirmed by this tool.</p>
+          <div class="chart"><svg viewBox="0 0 680 390" width="100%" role="img" aria-label="attack graph"><defs><marker id="agarrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="var(--rule)" stroke-width="1.5"/></marker></defs><line x1="325.0" y1="74" x2="115.0" y2="110" stroke="var(--rule)" stroke-width="1.5" marker-end="url(#agarrow)"/><line x1="115.0" y1="164" x2="115.0" y2="200" stroke="var(--rule)" stroke-width="1.5" marker-end="url(#agarrow)"/><line x1="115.0" y1="254" x2="115.0" y2="290" stroke="var(--rule)" stroke-width="1.5" marker-end="url(#agarrow)"/><rect x="20" y="20" width="190" height="54" rx="6" fill="var(--paper)" stroke="var(--clear)" stroke-width="1.5" /><text x="115.0" y="36" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--soft)" text-transform="uppercase">Public exposure</text><text x="115.0" y="54" text-anchor="middle" font-size="12" fill="var(--ink)">SSH on 203.0.113.10 (High)</text><rect x="230" y="20" width="190" height="54" rx="6" fill="var(--paper)" stroke="var(--clear)" stroke-width="1.5" /><text x="325.0" y="36" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--soft)" text-transform="uppercase">Public exposure</text><text x="325.0" y="54" text-anchor="middle" font-size="12" fill="var(--ink)">HTTP on acme.example (Critical)</text><rect x="20" y="110" width="190" height="54" rx="6" fill="var(--paper)" stroke="var(--clear)" stroke-width="1.5" /><text x="115.0" y="126" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--soft)" text-transform="uppercase">Credential leak</text><text x="115.0" y="144" text-anchor="middle" font-size="12" fill="var(--ink)">aws_access_key in https://acme.…</text><rect x="20" y="200" width="190" height="54" rx="6" fill="var(--paper)" stroke="var(--flag)" stroke-width="1.5" stroke-dasharray="4,3"/><text x="115.0" y="216" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--soft)" text-transform="uppercase">Potential access (unverified)</text><text x="115.0" y="234" text-anchor="middle" font-size="12" fill="var(--ink)">Potential AWS access</text><rect x="20" y="290" width="190" height="54" rx="6" fill="var(--paper)" stroke="var(--flag)" stroke-width="1.5" stroke-dasharray="4,3"/><text x="115.0" y="306" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--soft)" text-transform="uppercase">Needs manual verification</text><text x="115.0" y="324" text-anchor="middle" font-size="12" fill="var(--ink)">Manual verification required</text></svg><p class="note">Dashed border = hypothetical next stage, not verified. Solid border = directly observed evidence. This graph does not test or confirm any of the unverified stages — that requires a separate, deliberate, human decision.</p></div>
+        </section>
+        <section class="section">
+          <p class="eyebrow">Evidence</p>
+          <h2>Online credential testing</h2>
+          <table class="data-table">
+            <thead><tr><th>Log</th><th>Accounts tested</th><th>Valid pairs found</th></tr></thead>
+            <tbody><tr><td class="mono">online_hydra_203.0.113.10.log</td><td>48</td><td class="flag">2</td></tr></tbody>
+          </table>
+          <p class="note" style="margin-top:14px;">online_hydra_203.0.113.10.log</p><div class="chart"><svg viewBox="0 0 460 22" width="100%" height="22" role="img" aria-label="proportion chart"><rect x="0" y="0" width="460" height="22" rx="4" fill="var(--rule)" opacity="0.35"/><rect x="0.0" y="0" width="19.2" height="22" fill="var(--flag)" /><rect x="19.2" y="0" width="440.8" height="22" fill="var(--clear)" /></svg><div class="legend"><span class="legend-item"><span class="legend-swatch" style="background:var(--flag)"></span>Valid pairs found: 2 (4%)</span><span class="legend-item"><span class="legend-swatch" style="background:var(--clear)"></span>No match: 46 (96%)</span></div></div>
+        </section>
+        <section class="section">
+          <p class="eyebrow">Evidence</p>
+          <h2>Offline hash audit</h2>
+          <p class="stat"><span class="stat-num flag">8%</span>
+            of 142 tested hashes cracked against the
+            supplied wordlist (11 weak).</p>
+          <div class="chart"><svg viewBox="0 0 460 22" width="100%" height="22" role="img" aria-label="proportion chart"><rect x="0" y="0" width="460" height="22" rx="4" fill="var(--rule)" opacity="0.35"/><rect x="0.0" y="0" width="35.6" height="22" fill="var(--flag)" /><rect x="35.6" y="0" width="424.4" height="22" fill="var(--clear)" /></svg><div class="legend"><span class="legend-item"><span class="legend-swatch" style="background:var(--flag)"></span>Weak (cracked): 11 (8%)</span><span class="legend-item"><span class="legend-swatch" style="background:var(--clear)"></span>Not cracked: 131 (92%)</span></div></div>
+          <p class="note">Plaintext is intentionally not included in this report.
+            See <code>cracked.txt</code> in the engagement
+            output directory, handled per your data-handling policy.</p>
+        </section>
+        <section class="section">
+          <p class="eyebrow">Evidence</p>
+          <h2>Password hygiene &mdash; breach corpus check</h2>
+          <p class="stat"><span class="stat-num flag">11 / 142</span>
+            tested passwords have appeared in known public breaches
+            (HIBP k-anonymity model, no plaintext transmitted).</p>
+          <div class="chart"><svg viewBox="0 0 460 22" width="100%" height="22" role="img" aria-label="proportion chart"><rect x="0" y="0" width="460" height="22" rx="4" fill="var(--rule)" opacity="0.35"/><rect x="0.0" y="0" width="35.6" height="22" fill="var(--flag)" /><rect x="35.6" y="0" width="424.4" height="22" fill="var(--clear)" /></svg><div class="legend"><span class="legend-item"><span class="legend-swatch" style="background:var(--flag)"></span>Breached: 11 (8%)</span><span class="legend-item"><span class="legend-swatch" style="background:var(--clear)"></span>Clean: 131 (92%)</span></div></div>
+        </section>
+
+  <section class="section">
+    <p class="eyebrow">Chain of custody</p>
+    <h2>Audit trail</h2>
+    <div class="chain">
+        <div class="chain-block" tabindex="0" title="entry_hash: f7141fdcdfc4bf193045288c41a50433f5e5a825b30cac777a97a876e0fe5211">
+          <span class="chain-index">00</span>
+          <span class="chain-action">cli.engagement_start</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">f7141fdc&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: 4c740ef3162177767737682af67fb7ea4e13a90841030f5bec34a3c58d8fcba4">
+          <span class="chain-index">01</span>
+          <span class="chain-action">recon.scan_start</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">4c740ef3&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: d202263e47e11f250242da915a58d6800aba41a3766596e82f2db61987a13a39">
+          <span class="chain-index">02</span>
+          <span class="chain-action">recon.scan_end</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">d202263e&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: bc3348633291a8e9bfe27bba9e664143107c027ca00e26e539d22f634ad867c6">
+          <span class="chain-index">03</span>
+          <span class="chain-action">risk_engine.assessment_complete</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">bc334863&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: f166cf964b13bf612b1f35ab8b1e8ed2fec76f188204d76c4bcd789cb785d5e3">
+          <span class="chain-index">04</span>
+          <span class="chain-action">js_intel.analysis_complete</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">f166cf96&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: 3271fe3c76a87550d5748904a59c8b8d7895ff4a18fe445328fb05f1f270ee02">
+          <span class="chain-index">05</span>
+          <span class="chain-action">offline.crack_start</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">3271fe3c&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: d8d877ed1bb30e6f41c3fff48144d5017f6add142af3a1dcef0795e31d73ccb3">
+          <span class="chain-index">06</span>
+          <span class="chain-action">offline.crack_end</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">d8d877ed&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: 1cbc191d5217676aebd116eeca4fe23d181e086d4667f479b99bbbed79510049">
+          <span class="chain-index">07</span>
+          <span class="chain-action">online.spray_pass_start</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">1cbc191d&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: e4231ea9ca700dedfcc7a53e0b4fd9119af7afa83f8ea32dc56679bfca3bebc7">
+          <span class="chain-index">08</span>
+          <span class="chain-action">online.spray_pass_end</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">e4231ea9&hellip;</span>
+        </div><div class="chain-link"></div>
+        <div class="chain-block" tabindex="0" title="entry_hash: 23a7eb19794dd481ba4dc0eee59d94b073a3b5d2ecd93cedb582112205aa66ca">
+          <span class="chain-index">09</span>
+          <span class="chain-action">cli.engagement_end</span>
+          <span class="chain-time">12:08:05 UTC</span>
+          <span class="chain-hash">23a7eb19&hellip;</span>
+        </div></div>
+    <span class="chain-status clear">&#9679; CHAIN VERIFIED</span>
+    <p class="note">Each entry embeds the hash of the one before it. Recompute
+      independently with <code>python -m credaudit.cli verify --log audit_log.jsonl</code>.</p>
+  </section>
+
+  <footer class="footer">
+    Generated by credaudit. This report references the scope file by checksum
+    rather than embedding it, so scope changes after generation are detectable.
+  </footer>
+
+</div>
+</body>
+</html>

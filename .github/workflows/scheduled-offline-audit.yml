@@ -1,0 +1,135 @@
+# Automates the offline hash audit, on a schedule, across every scope
+# file in scope/*.yaml -- add a third engagement's scope file and this
+# workflow picks it up automatically, no edits needed here.
+#
+# This is safe to run unattended because it never sends live traffic
+# anywhere -- it only tests a hash export you already control against a
+# wordlist. Online credential spraying is deliberately NOT automated
+# here: it sends live authentication attempts at a real target, and
+# credaudit requires an interactive confirmation for that by design (see
+# credaudit/modules/online.py) -- that safeguard should not be bypassed
+# just to make it schedulable.
+#
+# Setup, per engagement/environment:
+#   1. In this repo's Settings -> Environments, create an environment
+#      whose name matches the scope file's engagement_id, lowercased with
+#      underscores turned to hyphens (e.g. engagement_id "ACME-PROD" ->
+#      environment "acme-prod"). This is what lets each engagement have
+#      its own hash-dump secret without any of them being visible to the
+#      others -- GitHub Environment secrets are scoped per environment,
+#      and a matrix job can select which environment to run under.
+#   2. In that environment, add a secret AD_HASH_DUMP_URL: a short-lived,
+#      scoped download URL for that engagement's hash export. GitHub
+#      secrets are capped well under typical AD dump sizes, so this
+#      pattern works for a URL, not for embedding the dump itself. For
+#      dumps too large even for that, replace the "Fetch hash dump" step
+#      with a self-hosted runner that already has secure access to the
+#      file.
+#   3. Add a real wordlist under wordlists/ for that engagement (the
+#      bundled example-small.txt is a smoke-test fixture only).
+#   4. Set the correct --hash-mode below for your hash type -- use a
+#      preset name (run `python -m credaudit.cli hash-types` to see them:
+#      ntlm, bcrypt, sha512crypt, kerberoast, etc.) or a raw hashcat -m
+#      number.
+#
+# Until an environment's secret is set, that engagement's job runs,
+# finds nothing to fetch, and exits cleanly -- it will not fail the
+# workflow.
+
+name: Scheduled offline password hygiene audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # every Monday, 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+      count: ${{ steps.build.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyyaml
+
+      - id: build
+        run: |
+          python3 << 'PYEOF'
+          import glob, json, os, yaml
+
+          entries = []
+          for path in sorted(glob.glob("scope/*.yaml")):
+              with open(path) as f:
+                  data = yaml.safe_load(f)
+              env_name = data["engagement_id"].lower().replace("_", "-")
+              entries.append({"environment": env_name, "scope_file": path})
+
+          matrix = {"include": entries}
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              gh_out.write(f"matrix={json.dumps(matrix)}\n")
+              gh_out.write(f"count={len(entries)}\n")
+          print(f"Discovered {len(entries)} scope file(s):")
+          print(json.dumps(matrix, indent=2))
+          PYEOF
+
+  audit:
+    needs: discover
+    if: needs.discover.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Install hashcat
+        run: sudo apt-get update && sudo apt-get install -y hashcat
+
+      - name: Fetch hash dump
+        env:
+          HASH_DUMP_URL: ${{ secrets.AD_HASH_DUMP_URL }}
+        run: |
+          if [ -z "$HASH_DUMP_URL" ]; then
+            echo "AD_HASH_DUMP_URL not set for environment '${{ matrix.environment }}' -- skipping, nothing to audit yet."
+            exit 0
+          fi
+          curl -fsSL -o hashes.txt "$HASH_DUMP_URL"
+
+      - name: Run offline audit
+        if: hashFiles('hashes.txt') != ''
+        run: |
+          python -m credaudit.cli run \
+            --scope ${{ matrix.scope_file }} \
+            --modules offline \
+            --hash-file hashes.txt \
+            --wordlist wordlists/example-small.txt \
+            --hash-mode ntlm \
+            --out ./out
+
+      - name: Upload report (plaintext excluded)
+        if: hashFiles('hashes.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: password-hygiene-report-${{ matrix.environment }}
+          path: |
+            out/**/report.md
+            out/**/report.html
+            out/**/audit_log.jsonl
+          retention-days: 90
+
+      - name: Clean up sensitive files
+        if: always()
+        run: rm -f hashes.txt out/**/cracked.txt

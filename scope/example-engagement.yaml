@@ -1,0 +1,56 @@
+# Copy this file per engagement. Get authorized_by signed off through your
+# org's normal process (SOW, ticket, or client email) before running anything.
+
+engagement_id: "ACME-2026-Q3-001"
+client_name: "Acme Corp"
+authorized_by: "Jane Doe, CISO — signed SOW #4521, 2026-07-20"
+
+start_date: 2026-08-01
+end_date: 2026-08-14
+
+# Exact hosts/hostnames or CIDR ranges. Nothing outside this list can be
+# touched by any module, regardless of what recon discovers, and groups
+# below can only organize this list -- they can never extend it.
+targets:
+  - "203.0.113.10"
+  - "203.0.113.11"
+  - "203.0.113.0/28"
+  - "vpn.acme-test-range.example"
+
+allowed_modules:
+  - recon
+  - online
+  - offline
+
+max_requests_per_minute: 20
+
+# Optional: named groups for --target-group, e.g. `--target-group production`
+# instead of typing hosts by hand. Every member must already be in `targets`
+# above -- credaudit checks this at load time and refuses to start otherwise.
+target_groups:
+  production:
+    - "203.0.113.10"
+  staging:
+    - "203.0.113.11"
+
+# Optional: per-protocol pacing, used as the default when --spray-delay /
+# --tasks aren't passed on the CLI. Falls back to 300s / 1 task for any
+# protocol not listed here.
+protocol_limits:
+  ssh:
+    seconds_between_passwords: 300
+    tasks: 1
+  rdp:
+    seconds_between_passwords: 900   # RDP lockout policies are often stricter
+    tasks: 1
+  http-post-form:
+    seconds_between_passwords: 60
+    tasks: 4
+
+# Optional: who to contact if something on the target side looks wrong
+# mid-engagement (a service goes down, an account locks unexpectedly).
+emergency_contact: "security-oncall@acme.com"
+
+# If true, the online module skips the interactive "type the engagement id"
+# confirmation prompt. Only set this for pre-approved CI/automation runs.
+confirm_online_testing: false

@@ -1,0 +1,18 @@
+# Smoke-test fixture only -- proves the pipeline works end to end.
+# This is NOT a real audit wordlist. It's a dozen of the most
+# well-publicized weak passwords (the kind every "worst passwords of the
+# year" list republishes), included purely so `scheduled-offline-audit.yml`
+# has something to run against without needing a network fetch. Point
+# --wordlist at a real, properly sized wordlist for an actual engagement.
+password
+123456
+12345678
+qwerty
+letmein
+admin
+welcome
+football
+iloveyou
+monkey
+dragon
+master

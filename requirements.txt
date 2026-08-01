@@ -1,0 +1,6 @@
+pyyaml>=6.0
+requests>=2.31
+pytest>=8.0
+
+# Optional, only needed for `run --summary` (the executive-summary feature):
+# anthropic>=0.30
