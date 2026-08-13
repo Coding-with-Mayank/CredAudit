@@ -20,8 +20,29 @@ def make_scope():
 def test_missing_api_key_raises_without_calling_anything(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     scope = make_scope()
-    with pytest.raises(LLMSummaryError, match="No API key"):
-        generate_executive_summary(scope)
+
+    # Isolate the "no key" branch specifically: fake out the anthropic
+    # import so this test's result doesn't depend on whether the real
+    # (optional) package happens to be installed in the environment
+    # running the tests -- requirements.txt correctly leaves it out, so
+    # a fresh `pip install -r requirements.txt` would otherwise hit the
+    # "package isn't installed" branch first and fail this assertion.
+    fake_anthropic_module = MagicMock()
+    with patch.dict("sys.modules", {"anthropic": fake_anthropic_module}):
+        with pytest.raises(LLMSummaryError, match="No API key"):
+            generate_executive_summary(scope)
+
+
+def test_missing_package_raises_when_anthropic_not_installed(monkeypatch):
+    """The other half of the same check: if the package genuinely isn't
+    importable, that specific error should fire -- regardless of the API
+    key being set or not."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-for-test")
+    scope = make_scope()
+
+    with patch.dict("sys.modules", {"anthropic": None}):
+        with pytest.raises(LLMSummaryError, match="isn't installed"):
+            generate_executive_summary(scope)
 
 
 def test_collect_facts_contains_no_raw_secrets():
