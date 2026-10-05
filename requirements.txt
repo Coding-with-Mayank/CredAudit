@@ -1,6 +1,18 @@
-pyyaml>=6.0
-requests>=2.31
-pytest>=8.0
-
-# Optional, only needed for `run --summary` (the executive-summary feature):
-# anthropic>=0.30
+# Canonical dependency/packaging metadata now lives in pyproject.toml.
+# This file is kept only for workflows that still expect a
+# requirements.txt (some CI templates, some IDEs) -- it intentionally
+# just installs the project itself in editable mode with every optional
+# extra + test dependencies, which is equivalent to (and stays in sync
+# with) `pip install -e .[dev]`.
+#
+#   pip install -r requirements.txt
+#
+# For a minimal install with only the core CLI's hard dependencies:
+#   pip install .
+#
+# For a specific optional feature set:
+#   pip install .[llm]        # AI-polished executive summaries
+#   pip install .[validate]   # live secret-validation extras
+#   pip install .[api]        # persistent findings DB + REST API + RBAC
+#   pip install .[all]        # everything above
+-e .[dev]

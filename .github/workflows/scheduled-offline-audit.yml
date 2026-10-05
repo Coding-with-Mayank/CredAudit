@@ -93,7 +93,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install -r requirements.txt
+      # Plain `pip install .` -- this job only needs the core CLI
+      # (offline hash auditing), not the dev/test/optional-extra
+      # dependencies `requirements.txt` now pulls in for local
+      # development.
+      - run: pip install .
 
       - name: Install hashcat
         run: sudo apt-get update && sudo apt-get install -y hashcat

@@ -55,6 +55,76 @@ def _collect_facts(
     }
 
 
+_SEVERITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4}
+
+_FALLBACK_NOTICE = (
+    "[This is a deterministic, template-based summary \u2014 no AI model was used. For an "
+    "AI-polished narrative version, install the 'llm' extra (`pip install credaudit[llm]`) "
+    "and set ANTHROPIC_API_KEY, then re-run with --summary.]"
+)
+
+
+def generate_fallback_summary(
+    scope,
+    recon_findings=None,
+    risk_assessments=None,
+    offline_result=None,
+    online_summary=None,
+    breach_results=None,
+) -> str:
+    """Dependency-free, network-free, deterministic executive summary
+    built from the exact same facts `generate_executive_summary` would
+    send to the model -- template-based prose instead of a generated
+    narrative. This exists so `--summary` always produces *something*
+    useful: the AI-polished version is an enhancement on top of this,
+    not a prerequisite for having an executive summary at all.
+    """
+    facts = _collect_facts(
+        scope, recon_findings, risk_assessments, offline_result, online_summary, breach_results
+    )
+    lines = [
+        f"Executive summary for engagement {facts['engagement_id']} ({facts['client_name']}), "
+        f"covering {len(facts['targets'])} authorized target(s)."
+    ]
+
+    if facts["recon_finding_count"] is not None:
+        lines.append(f"Reconnaissance identified {facts['recon_finding_count']} finding(s) across the authorized scope.")
+
+    if facts["risk_assessments"]:
+        counts: dict = {}
+        for r in facts["risk_assessments"]:
+            counts[r["risk_level"]] = counts.get(r["risk_level"], 0) + 1
+        ordered = sorted(counts.items(), key=lambda kv: _SEVERITY_ORDER.get(kv[0], 99))
+        breakdown = ", ".join(f"{count} {level}" for level, count in ordered)
+        lines.append(f"Service-level risk assessment covered {len(facts['risk_assessments'])} service(s): {breakdown}.")
+
+    if facts["offline_audit"]:
+        total = facts["offline_audit"]["total_hashes"]
+        cracked = facts["offline_audit"]["cracked"]
+        pct = (cracked / total * 100) if total else 0
+        lines.append(f"Offline password-hash analysis cracked {cracked} of {total} hash(es) ({pct:.0f}%).")
+
+    if facts["online_testing"]:
+        total_tested = sum(s["accounts_tested"] for s in facts["online_testing"])
+        total_valid = sum(s["valid_pairs_found"] for s in facts["online_testing"])
+        lines.append(
+            f"Authorized online credential testing checked {total_tested} account(s) and directly "
+            f"confirmed {total_valid} valid credential pair(s)."
+        )
+
+    if facts["breach_check"]:
+        lines.append(
+            f"Breach-database checking found {facts['breach_check']['breached']} of "
+            f"{facts['breach_check']['total']} password(s) previously exposed in known breaches."
+        )
+
+    if len(lines) == 1:
+        lines.append("No findings were supplied to summarize.")
+
+    lines.append(_FALLBACK_NOTICE)
+    return " ".join(lines)
+
+
 def generate_executive_summary(
     scope,
     recon_findings=None,
@@ -64,23 +134,39 @@ def generate_executive_summary(
     breach_results=None,
     api_key: str = None,
     model: str = "claude-sonnet-4-6",
+    allow_fallback: bool = False,
 ) -> str:
     """Calls the Anthropic Messages API with a JSON summary of findings
     you've already collected, and asks for a short factual executive
     summary. Requires ANTHROPIC_API_KEY in the environment, or an
     explicit api_key -- this is your key, your account, your call about
-    what leaves your machine. Raises LLMSummaryError if the package
-    isn't installed or no key is available, rather than silently doing
-    nothing."""
+    what leaves your machine.
+
+    By default (`allow_fallback=False`, unchanged from prior behavior),
+    raises LLMSummaryError if the package isn't installed or no key is
+    available, rather than silently doing nothing -- existing callers
+    that handle that error keep working exactly as before. Pass
+    `allow_fallback=True` (the CLI's `run --summary` does this) to get
+    `generate_fallback_summary()`'s deterministic output instead of an
+    exception in those two cases.
+    """
     try:
         import anthropic
     except ImportError as e:
+        if allow_fallback:
+            return generate_fallback_summary(
+                scope, recon_findings, risk_assessments, offline_result, online_summary, breach_results,
+            )
         raise LLMSummaryError(
-            "The 'anthropic' package isn't installed. Run: pip install anthropic"
+            "The 'anthropic' package isn't installed. Run: pip install credaudit[llm] (or: pip install anthropic)"
         ) from e
 
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
+        if allow_fallback:
+            return generate_fallback_summary(
+                scope, recon_findings, risk_assessments, offline_result, online_summary, breach_results,
+            )
         raise LLMSummaryError(
             "No API key found. Set ANTHROPIC_API_KEY or pass api_key explicitly."
         )

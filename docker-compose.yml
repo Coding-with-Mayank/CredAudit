@@ -1,0 +1,27 @@
+# Convenience compose file for the persistent findings API
+# (credaudit.api). Not required for normal CLI/scan usage -- that's
+# just `docker run --rm -it -v "$PWD":/work -w /work credaudit run ...`
+# with the image built from the top-level Dockerfile. This is
+# specifically for running `credaudit serve` as a long-lived service.
+#
+# Before first use:
+#   export CREDAUDIT_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+#   docker compose up -d
+#   docker compose exec credaudit-api credaudit create-user --username you --role admin
+#
+# Findings persist in the `credaudit-data` named volume across restarts.
+
+services:
+  credaudit-api:
+    build: .
+    entrypoint: ["credaudit"]
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000", "--db-url", "sqlite:////data/credaudit.db"]
+    ports:
+      - "8000:8000"
+    environment:
+      - CREDAUDIT_JWT_SECRET=${CREDAUDIT_JWT_SECRET:?Set CREDAUDIT_JWT_SECRET before starting (see comment above)}
+    volumes:
+      - credaudit-data:/data
+
+volumes:
+  credaudit-data:

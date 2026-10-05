@@ -59,9 +59,15 @@ class OnlineTestSummary:
     log_path: Path
     accounts_tested: int
     valid_pairs_found: int
+    target: str = ""
+    protocol: str = ""
+    backend: str = ""
 
 
-def summarize_log(log_path: Path, accounts_tested: int, backend: str = "hydra") -> OnlineTestSummary:
+def summarize_log(
+    log_path: Path, accounts_tested: int, backend: str = "hydra",
+    target: str = "", protocol: str = "",
+) -> OnlineTestSummary:
     """Best-effort count of valid pairs from the engine's own log, without
     ever surfacing the actual credentials into report data. The raw log
     file still has them, locally, exactly as the tool normally behaves --
@@ -84,7 +90,8 @@ def summarize_log(log_path: Path, accounts_tested: int, backend: str = "hydra") 
                 elif backend == "ncrack" and ("discovered credentials" in lower or "login:" in lower):
                     count += 1
     return OnlineTestSummary(
-        log_path=log_path, accounts_tested=accounts_tested, valid_pairs_found=count
+        log_path=log_path, accounts_tested=accounts_tested, valid_pairs_found=count,
+        target=target, protocol=protocol, backend=backend,
     )
 
 
@@ -132,6 +139,7 @@ def run_spray(
 ) -> Path:
     scope.check_module("online")
     scope.check_target(target)
+    scope.check_protocol("online", cfg.protocol)
     scope.require_interactive_confirmation("online")
 
     if cfg.backend not in SUPPORTED_BACKENDS:

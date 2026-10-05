@@ -18,6 +18,21 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - run: pip install -r requirements.txt
+      - run: pip install -e ".[dev]"
 
-      - run: python -m pytest tests/ -v
+      # Bare `pytest`, not `python -m pytest` -- the two behave
+      # differently (`-m` adds the cwd to sys.path; the installed
+      # console script does not), and running the bare command here is
+      # what actually proves the package installs correctly. See the
+      # "Packaging" note in README.md for the bug this specifically
+      # guards against.
+      - run: pytest tests/ -v
+
+      # Also verify a plain, non-editable `pip install .` works end to
+      # end from a clean environment -- editable installs can mask
+      # packaging mistakes (missing package data, wrong `packages` list
+      # in pyproject.toml) that only show up on a real install.
+      - run: |
+          python -m venv /tmp/install-check
+          /tmp/install-check/bin/pip install .
+          /tmp/install-check/bin/credaudit hash-types

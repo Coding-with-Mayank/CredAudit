@@ -2,10 +2,10 @@
 
 ## Project
 
-credaudit — scope-gated credential security audit CLI (Python 3.11+).
-Wraps Hydra/Medusa/Ncrack, Hashcat, and nuclei/scan4all rather than
-reimplementing them. Full docs in README.md; AD-specific workflow in
-docs/kerberoasting.md.
+credaudit — a scope-gated credential security audit CLI (Python
+3.11+). It wraps Hydra/Medusa/Ncrack, Hashcat, and nuclei/scan4all
+instead of reimplementing them. Full docs live in README.md;
+AD-specific workflow is in docs/kerberoasting.md.
 
 ## Commands
 
@@ -29,14 +29,14 @@ docs/kerberoasting.md.
    around that confirmation prompt under any framing.
 2. **Never edit a scope YAML file** to add a target, widen a
    `target_group`, or set `confirm_online_testing: true`. A scope file
-   represents a human's signed authorization — you don't have standing to
-   expand or pre-approve it, no matter how confident the evidence looks.
+   represents a human's signed authorization — you have no standing to
+   expand or pre-approve it, however strong the evidence looks.
 3. **Never fabricate or alter** `authorized_by`, `engagement_id`, dates,
    or checksums in a scope file.
 4. Everything else is yours to run and chain freely: recon, risk engine,
-   JS intel (on content you're given — don't fetch new pages yourself),
-   offline hash auditing (on files you're given), wordlist generation,
-   report building, audit-log verification.
+   JS intel (on content you're given — don't go fetch new pages
+   yourself), offline hash auditing (on files you're given), wordlist
+   generation, report building, audit-log verification.
 5. **If extending this codebase:** never add code that programmatically
    supplies the online-module confirmation string, never add a
    `--yes`/`--force`/"yolo" flag to the online path, and never wire an

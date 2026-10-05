@@ -221,6 +221,173 @@ def _attack_graph_svg(graph) -> str:
 # Markdown report -- quick to read, easy to diff/version-control
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Unified evidence / correlation / attack-path / credential / secret
+# sections. These render the core.evidence.Evidence, core.correlation.
+# CorrelatedFinding, and attack_paths.graph.AttackPath objects the
+# pipeline (core.pipeline.run_pipeline) produces, when the caller
+# supplies them. Every parameter is optional and purely additive --
+# callers still using only the original per-module arguments get exactly
+# the report this project always produced.
+# ---------------------------------------------------------------------------
+
+EVIDENCE_SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Info"]
+_EVIDENCE_SEVERITY_COLORS = {
+    "Critical": "var(--flag)", "High": "var(--flag)", "Medium": "#A6790A",
+    "Low": "var(--clear)", "Info": "var(--soft)",
+}
+
+
+def _evidence_severity_counts(evidence_list) -> dict:
+    counts = {s: 0 for s in EVIDENCE_SEVERITY_ORDER}
+    for e in evidence_list or []:
+        counts[e.severity] = counts.get(e.severity, 0) + 1
+    return counts
+
+
+def _risk_distribution_text(evidence_list) -> list:
+    counts = _evidence_severity_counts(evidence_list)
+    total = sum(counts.values())
+    return [
+        f"- {s}: {counts[s]} ({(counts[s] / total * 100 if total else 0):.0f}%)"
+        for s in EVIDENCE_SEVERITY_ORDER if counts[s] > 0
+    ]
+
+
+def _risk_distribution_chart(evidence_list) -> str:
+    counts = _evidence_severity_counts(evidence_list)
+    total = sum(counts.values())
+    segments = [(counts[s], _EVIDENCE_SEVERITY_COLORS[s], s) for s in EVIDENCE_SEVERITY_ORDER if counts[s] > 0]
+    return _stat_bar(segments, total=total)
+
+
+def _credential_findings_md(findings) -> list:
+    lines = ["## Credential findings", ""]
+    for f in sorted(findings, key=lambda x: x.risk.score, reverse=True):
+        flags = []
+        if f.default_credential:
+            flags.append("default credential")
+        if f.reused_with:
+            flags.append(f"reused ({len(f.reused_with)} other account(s))")
+        if f.breach_exposure:
+            flags.append("breach-exposed")
+        elif f.breach_exposure is None:
+            flags.append("breach: not checked")
+        if f.privileged:
+            flags.append("privileged")
+        lines.append(
+            f"- **[{f.risk.severity}]** `{f.account}` \u2014 {f.strength} password "
+            f"(risk {f.risk.score}, confidence {f.risk.confidence:.0%}): {', '.join(flags) or 'none'}"
+        )
+        lines.append(f"  - Remediation: {f.risk.remediation}")
+    lines.append("")
+    return lines
+
+
+def _secret_findings_md(findings) -> list:
+    lines = ["## Secret exposure", ""]
+    for f in findings:
+        location = f" (line {f.line_number})" if f.line_number else ""
+        lines.append(f"- **[{f.display_severity}]** {f.secret_type} in `{f.source}`{location} \u2014 `{f.redacted}`")
+        lines.append(f"  - Remediation: {f.remediation}")
+    lines.append("")
+    return lines
+
+
+def _correlations_md(correlations) -> list:
+    lines = ["## Correlated findings", ""]
+    if not correlations:
+        lines += ["No correlated finding chains identified.", ""]
+        return lines
+    for c in correlations:
+        lines.append(f"- **{c.correlation_id}** [{c.status}] {c.explanation}")
+        lines.append(f"  - Combined risk: {c.combined_risk_score}, confidence: {c.confidence:.0%}")
+        lines.append(f"  - Related findings: {', '.join(c.related_finding_ids)}")
+        lines.append(f"  - Remediation: {c.remediation}")
+    lines.append("")
+    return lines
+
+
+def _attack_paths_md(attack_paths) -> list:
+    lines = ["## Attack paths", ""]
+    if not attack_paths:
+        lines += ["No attack paths identified from current evidence.", ""]
+        return lines
+    for p in attack_paths:
+        chain = " \u2192 ".join(n.label for n in p.nodes)
+        lines.append(f"- **{p.path_id}** [{p.status}] risk {p.path_risk}, confidence {p.confidence:.0%}")
+        lines.append(f"  - {chain}")
+        lines.append(f"  - {p.narrative}")
+        verification = getattr(p, "verification", None)
+        if verification is not None:
+            lines.append(f"  - Verification: {verification.summary}")
+            for step in verification.outstanding_steps:
+                lines.append(f"    - To confirm: {step}")
+        for m in p.recommended_mitigations:
+            lines.append(f"  - Mitigation: {m}")
+    lines.append("")
+    return lines
+
+
+def _evidence_table_md(evidence_list) -> list:
+    lines = [
+        "## Evidence detail", "",
+        "| ID | Asset | Category | Severity | Risk | Confidence | Status | Source |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for e in sorted(evidence_list, key=lambda x: x.risk_score, reverse=True):
+        lines.append(
+            f"| {e.finding_id} | {e.asset} | {e.category} | {e.severity} | {e.risk_score} | "
+            f"{e.confidence:.0%} | {e.status} | {e.source} |"
+        )
+    lines.append("")
+    return lines
+
+
+LIMITATIONS_TEXT = [
+    "Scope enforcement happens in CredAudit's own Python code before every external-tool "
+    "invocation; it cannot guarantee that a third-party binary (hydra, hashcat, nuclei, ...) "
+    "will never itself act outside the intended boundary due to a bug or flag misuse.",
+    "Scope-file signature verification (when used) proves the file's content has not changed "
+    "since a specific private key signed it. With an externally-supplied trusted key this is "
+    "real assurance; with a key embedded in the scope file itself, it only proves internal "
+    "self-consistency. It never proves the signer was organizationally authorized to approve "
+    "the engagement.",
+    "The audit log's hash chain detects edits, reordering, and deletions within the entries "
+    "present. Detecting truncation from the end of the log requires comparing it against its "
+    "signed manifest (`credaudit verify`) -- an unsigned manifest still detects truncation, "
+    "just not who approved the final state.",
+    "Correlated findings and attack paths describe co-occurrence of evidence on the same asset, "
+    "not a confirmed attacker path. Status is only \u2018confirmed\u2019 when every underlying "
+    "finding was itself directly observed (e.g. a live valid credential pair, or a live-validated "
+    "secret) -- never from pattern-matching alone. Per-path verification detail (which specific "
+    "link is still unconfirmed, and the exact authorized step that would confirm it) is available "
+    "via attack_paths.verification -- see docs/attack_path_verification.md. This platform does not, "
+    "and will not, automatically exploit a finding to 'prove' a path; that detail still requires a "
+    "human to take the indicated, already-scoped action.",
+    "Secret detection is pattern-based (regex/shape heuristics) and will still miss secrets that "
+    "don't match a known pattern shape. Live validation (opt-in via --validate-secrets) can confirm "
+    "whether a detected secret with a known issuing provider (GitHub, Slack, Stripe, SendGrid, "
+    "Google, AWS) is currently active via a single read-only API call to that provider -- see "
+    "docs/secret_validation.md for exactly what is and isn't checked this way, and why private keys "
+    "and database connection strings are deliberately excluded from automatic validation.",
+    "Password-strength classification defaults to a fixed, documented rule (length + "
+    "character-class count); the built-in common-password list is a small hygiene sample, not a "
+    "full cracking dictionary. An opt-in entropy/crack-time estimate (zxcvbn-based, via "
+    "use_entropy_scoring=True) is available for a more graduated, pattern-aware assessment that "
+    "catches things the fixed rule can miss, such as keyboard-walk passwords.",
+    "Breach-exposure checking is opt-in and requires network access to the HIBP Pwned Passwords "
+    "API; when not run, credential findings record breach exposure as \u2018not checked\u2019, "
+    "never as \u2018clean\u2019.",
+    "Risk scores are an explainable, documented weighted model (see docs/risk_model.md), not a "
+    "guarantee of real-world exploitability -- they exist to prioritize review, not replace it.",
+    "The optional persistent findings backend (credaudit.api, requires the [api] extra) adds "
+    "workflow tracking (open/remediated/false_positive/accepted_risk) on top of findings; it does "
+    "not change or re-score the confidence/status vocabulary produced by a scan, and it does not "
+    "re-run or re-verify a finding on import.",
+]
+
+
 def build_report(
     scope: Scope,
     out_dir: Path,
@@ -231,6 +398,11 @@ def build_report(
     risk_assessments=None,
     js_intel_results=None,
     executive_summary=None,
+    evidence_list=None,
+    correlations=None,
+    attack_paths=None,
+    credential_findings=None,
+    secret_findings=None,
 ) -> Path:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -332,14 +504,47 @@ def build_report(
             "",
         ]
 
+    if credential_findings:
+        lines += _credential_findings_md(credential_findings)
+
+    if secret_findings:
+        lines += _secret_findings_md(secret_findings)
+
+    if correlations is not None:
+        lines += _correlations_md(correlations)
+
+    if attack_paths is not None:
+        lines += _attack_paths_md(attack_paths)
+
+    if evidence_list:
+        lines += ["## Risk distribution", "", *_risk_distribution_text(evidence_list), ""]
+        lines += _evidence_table_md(evidence_list)
+
+    lines += [
+        "## Scope & authorization",
+        "",
+        f"- **Cryptographically verified:** {scope.cryptographically_verified} "
+        f"(trust level: {scope.verification_trust_level})",
+        f"- **Signature required by scope file:** {scope.require_signature}",
+        f"- **Allowed modules:** {', '.join(scope.allowed_modules)}",
+        "",
+    ]
+
+    if evidence_list:
+        sources = sorted({e.source for e in evidence_list})
+        lines += ["## Tool / evidence sources", "", *[f"- {s}" for s in sources], ""]
+
     lines += [
         "## Audit trail",
         "",
         "See `audit_log.jsonl` in this engagement's output directory for the "
-        "full hash-chained action log. Verify it with "
+        "full hash-chained action log, and `audit_log_manifest.json` for the "
+        "signed final checkpoint. Verify both with "
         "`python -m credaudit.cli verify --log audit_log.jsonl`.",
         "",
     ]
+
+    lines += ["## Limitations", "", *[f"- {t}" for t in LIMITATIONS_TEXT], ""]
 
     report_path.write_text("\n".join(lines))
     return report_path
@@ -348,6 +553,125 @@ def build_report(
 # ---------------------------------------------------------------------------
 # HTML report -- the client/auditor-facing deliverable
 # ---------------------------------------------------------------------------
+
+def _credential_findings_html(findings) -> str:
+    rows = []
+    for f in sorted(findings, key=lambda x: x.risk.score, reverse=True):
+        flags = []
+        if f.default_credential:
+            flags.append("default credential")
+        if f.reused_with:
+            flags.append(f"reused \u00d7{len(f.reused_with)}")
+        if f.breach_exposure:
+            flags.append("breach-exposed")
+        elif f.breach_exposure is None:
+            flags.append("breach: not checked")
+        if f.privileged:
+            flags.append("privileged")
+        cls = "flag" if f.risk.severity in ("Critical", "High") else "clear" if f.risk.severity in ("Low", "Info") else ""
+        rows.append(
+            f'<tr><td class="mono">{_esc(f.account)}</td><td>{_esc(f.strength)}</td>'
+            f'<td class="{cls}">{_esc(f.risk.severity)}</td><td class="mono">{f.risk.score}</td>'
+            f'<td>{_esc(", ".join(flags) or "none")}</td></tr>'
+        )
+    return (
+        '<table class="data-table"><thead><tr><th>Account</th><th>Strength</th>'
+        '<th>Severity</th><th>Risk</th><th>Flags</th></tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table>'
+    )
+
+
+def _secret_findings_html(findings) -> str:
+    rows = []
+    for f in findings:
+        location = f" (line {f.line_number})" if f.line_number else ""
+        sev = f.display_severity
+        cls = "flag" if sev in ("Critical", "High") else "clear" if sev == "Low" else ""
+        rows.append(
+            f'<tr><td>{_esc(f.secret_type)}</td><td class="mono">{_esc(f.source)}{_esc(location)}</td>'
+            f'<td class="{cls}">{_esc(sev)}</td><td class="mono">{_esc(f.redacted)}</td></tr>'
+        )
+    return (
+        '<table class="data-table"><thead><tr><th>Type</th><th>Source</th>'
+        '<th>Severity</th><th>Redacted value</th></tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table>'
+    )
+
+
+def _correlations_html(correlations) -> str:
+    if not correlations:
+        return '<p class="note">No correlated finding chains identified.</p>'
+    rows = []
+    for c in correlations:
+        rows.append(
+            f'<tr><td class="mono">{_esc(c.correlation_id)}</td><td>{_esc(c.asset)}</td>'
+            f'<td class="mono">{c.combined_risk_score}</td><td>{_esc(c.status)}</td>'
+            f'<td>{_esc(c.explanation)}</td></tr>'
+        )
+    return (
+        '<table class="data-table"><thead><tr><th>Chain</th><th>Asset</th><th>Risk</th>'
+        '<th>Status</th><th>Explanation</th></tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table>'
+    )
+
+
+def _attack_paths_html(attack_paths) -> str:
+    if not attack_paths:
+        return '<p class="note">No attack paths identified from current evidence.</p>'
+    blocks = []
+    for p in attack_paths:
+        chain = " \u2192 ".join(n.label for n in p.nodes)
+        verification = getattr(p, "verification", None)
+        verification_html = ""
+        if verification is not None:
+            steps_html = "".join(f"<li>{_esc(step)}</li>" for step in verification.outstanding_steps)
+            verification_html = (
+                f'<p class="note" style="margin:4px 0;"><strong>Verification:</strong> {_esc(verification.summary)}</p>'
+                + (f'<ul class="note" style="margin:0 0 4px 16px;">{steps_html}</ul>' if steps_html else "")
+            )
+        blocks.append(
+            f'<div class="tile" style="margin-bottom:10px;">'
+            f'<p class="mono" style="margin:0 0 4px;">{_esc(p.path_id)} '
+            f'<span class="note">(risk {p.path_risk}, confidence {p.confidence:.0%}, {_esc(p.status)})</span></p>'
+            f'<p style="margin:4px 0;">{_esc(chain)}</p>'
+            f'<p class="note">{_esc(p.narrative)}</p>{verification_html}</div>'
+        )
+    return "".join(blocks)
+
+
+def _evidence_table_html(evidence_list) -> str:
+    rows = []
+    for e in sorted(evidence_list, key=lambda x: x.risk_score, reverse=True):
+        cls = "flag" if e.severity in ("Critical", "High") else "clear" if e.severity in ("Low", "Info") else ""
+        rows.append(
+            f'<tr><td class="mono">{_esc(e.finding_id)}</td><td>{_esc(e.asset)}</td>'
+            f'<td>{_esc(e.category)}</td><td class="{cls}">{_esc(e.severity)}</td>'
+            f'<td class="mono">{e.risk_score}</td><td class="mono">{e.confidence:.0%}</td>'
+            f'<td>{_esc(e.status)}</td><td>{_esc(e.source)}</td></tr>'
+        )
+    return (
+        '<table class="data-table"><thead><tr><th>ID</th><th>Asset</th><th>Category</th>'
+        '<th>Severity</th><th>Risk</th><th>Confidence</th><th>Status</th><th>Source</th></tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table>'
+    )
+
+
+def _scope_authorization_html(scope: Scope) -> str:
+    verified_cls = "clear" if scope.cryptographically_verified else ""
+    return f"""
+    <dl class="cover-facts">
+      <div><dt>Cryptographically verified</dt>
+        <dd class="{verified_cls}">{_esc(scope.cryptographically_verified)}
+          (trust level: {_esc(scope.verification_trust_level)})</dd></div>
+      <div><dt>Signature required by scope file</dt><dd>{_esc(scope.require_signature)}</dd></div>
+      <div><dt>Allowed modules</dt><dd>{_esc(", ".join(scope.allowed_modules))}</dd></div>
+    </dl>"""
+
+
+def _limitations_html() -> str:
+    items = "".join(f"<li>{_esc(t)}</li>" for t in LIMITATIONS_TEXT)
+    return f'<ul class="note" style="padding-left:18px;">{items}</ul>'
+
 
 def build_html_report(
     scope: Scope,
@@ -360,6 +684,11 @@ def build_html_report(
     risk_assessments=None,
     js_intel_results=None,
     executive_summary=None,
+    evidence_list=None,
+    correlations=None,
+    attack_paths=None,
+    credential_findings=None,
+    secret_findings=None,
 ) -> Path:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -500,6 +829,78 @@ def build_html_report(
             (HIBP k-anonymity model, no plaintext transmitted).</p>
           {chart}
         </section>""")
+
+    if credential_findings:
+        sections.append(f"""
+        <section class="section">
+          <p class="eyebrow">Evidence</p>
+          <h2>Credential findings</h2>
+          {_credential_findings_html(credential_findings)}
+        </section>""")
+
+    if secret_findings:
+        sections.append(f"""
+        <section class="section">
+          <p class="eyebrow">Evidence</p>
+          <h2>Secret exposure</h2>
+          {_secret_findings_html(secret_findings)}
+        </section>""")
+
+    if correlations is not None:
+        sections.append(f"""
+        <section class="section">
+          <p class="eyebrow">Interpretation</p>
+          <h2>Correlated findings</h2>
+          <p class="note" style="margin-bottom:8px;">Co-occurring evidence on the same asset, grouped into a
+            combined-risk chain. A chain is only marked \u2018confirmed\u2019 when every finding feeding it was
+            itself directly observed -- otherwise it is a prioritization signal, not proof.</p>
+          {_correlations_html(correlations)}
+        </section>""")
+
+    if attack_paths is not None:
+        sections.append(f"""
+        <section class="section">
+          <p class="eyebrow">Interpretation</p>
+          <h2>Attack paths</h2>
+          <p class="note" style="margin-bottom:8px;">Built directly from the correlated findings above --
+            every node traces back to a specific finding_id, and nothing here is tested or exploited.</p>
+          {_attack_paths_html(attack_paths)}
+        </section>""")
+
+    if evidence_list:
+        sections.append(f"""
+        <section class="section">
+          <p class="eyebrow">Summary</p>
+          <h2>Risk distribution</h2>
+          {_risk_distribution_chart(evidence_list)}
+        </section>""")
+        sections.append(f"""
+        <section class="section">
+          <p class="eyebrow">Evidence</p>
+          <h2>Evidence detail</h2>
+          {_evidence_table_html(evidence_list)}
+        </section>""")
+        sources = sorted({e.source for e in evidence_list})
+        sections.append(f"""
+        <section class="section">
+          <p class="eyebrow">Reference</p>
+          <h2>Tool / evidence sources</h2>
+          <div class="tag-list">{"".join(f'<span class="tag">{_esc(s)}</span>' for s in sources)}</div>
+        </section>""")
+
+    sections.append(f"""
+    <section class="section">
+      <p class="eyebrow">Scope</p>
+      <h2>Scope &amp; authorization</h2>
+      {_scope_authorization_html(scope)}
+    </section>""")
+
+    sections.append(f"""
+    <section class="section">
+      <p class="eyebrow">Reference</p>
+      <h2>Limitations</h2>
+      {_limitations_html()}
+    </section>""")
 
     chain_blocks = []
     for i, e in enumerate(entries):

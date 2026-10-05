@@ -1,0 +1,103 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "credaudit"
+version = "0.3.0"
+description = "Scope-gated security assessment and intelligence platform for authorized engagements: credential/secret analysis, live secret validation, correlation, risk scoring, attack-path mapping, and auditable reporting."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "CredAudit contributors" }]
+keywords = [
+    "security", "pentest", "credential-audit", "secret-scanning",
+    "red-team", "authorized-testing", "risk-scoring",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+    "Intended Audience :: Information Technology",
+]
+
+# Core dependencies: everything `credaudit.cli` needs for scope
+# enforcement, native credential/secret analysis, correlation, risk
+# scoring, attack-path mapping, and report/dashboard generation.
+# Deliberately minimal -- everything that only a subset of users need
+# (live secret validation's extra providers, the AI-polished executive
+# summary, the persistent API/RBAC backend) is an optional extra below,
+# not a forced dependency.
+dependencies = [
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "cryptography>=42.0",
+    "zxcvbn>=4.4.28",
+]
+
+[project.optional-dependencies]
+# AI-polished executive summary via `run --summary`. Without this extra,
+# `--summary` still works -- it produces a deterministic, template-based
+# summary instead (see modules/llm_summary.generate_fallback_summary).
+llm = ["anthropic>=0.69"]
+
+# Persistent findings backend: REST API, SQLite/Postgres-backed storage,
+# JWT auth, and role-based access control (admin/analyst/viewer).
+api = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "sqlmodel>=0.0.21",
+    "pyjwt>=2.9",
+    "bcrypt>=4.1",
+    "python-multipart>=0.0.9",
+]
+
+# Everything above, for a full-featured install. Note: live secret
+# validation (credaudit.validators) needs no extra package beyond the
+# core `requests` dependency -- its AWS check is a from-scratch SigV4
+# signer specifically to avoid a boto3/botocore dependency for one GET
+# request -- so there's no separate "validate" extra to list here.
+all = [
+    "credaudit[llm,api]",
+]
+
+dev = [
+    "credaudit[all]",
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+credaudit = "credaudit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/credaudit/credaudit"
+Documentation = "https://github.com/credaudit/credaudit#readme"
+
+[tool.setuptools]
+packages = [
+    "credaudit",
+    "credaudit.core",
+    "credaudit.analyzers",
+    "credaudit.integrations",
+    "credaudit.attack_paths",
+    "credaudit.dashboard",
+    "credaudit.modules",
+    "credaudit.reporting",
+    "credaudit.validators",
+    "credaudit.api",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Keeps `pytest -m "not network"` usable if a contributor ever adds a
+# genuinely network-touching test behind an opt-in marker; nothing in
+# the default suite uses it today (see README's Testing section: every
+# test is deterministic, mocked, and offline).
+markers = [
+    "network: test performs real network I/O and is excluded by default",
+]
+addopts = "-m 'not network'"
